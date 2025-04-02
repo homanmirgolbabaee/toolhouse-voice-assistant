@@ -73,7 +73,7 @@ function SimplifiedVoiceRecorder({ onAudioCaptured, isProcessing, activeMicId }:
     } else {
       stopRecording();
       const recordingDuration = performanceUtils.end('voice-recording');
-      logger.debug('audio', `Recording duration: ${recordingDuration.toFixed(2)}ms`);
+      logger.debug('audio', `Recording duration: ${recordingDuration?.toFixed(2) ?? 'unknown'}ms`);
     }
   };
 
@@ -265,48 +265,48 @@ function SimplifiedVoiceRecorder({ onAudioCaptured, isProcessing, activeMicId }:
           </div>
         )}
         
-        <button
-          onClick={toggleRecording}
-          disabled={isProcessing && !isRecording}
-          className="relative w-16 h-16 rounded-full flex items-center justify-center transition-all duration-100 focus:outline-none text-white shadow-lg"
-          style={{
-            backgroundColor: getMicColor(),
-            transform: getMicSize(),
-            transition: "transform 0.1s ease-out, background-color 0.1s ease-out"
-          }}
-          aria-label={isRecording ? "Stop recording" : "Start recording"}
-          data-testid="voice-recorder-button"
-        >
-          {isRecording ? (
-            <Square size={24} />
-          ) : (
-            <Mic size={24} />
+        <div className="relative w-16 h-16">
+          {/* Audio level indicator rings - positioned behind the button */}
+          {isRecording && (
+            <>
+              <div 
+                className="absolute inset-0 rounded-full border-4 border-red-400/70 pointer-events-none"
+                style={{
+                  transform: `scale(${1 + audioLevel * 0.5})`,
+                  opacity: 0.7 - audioLevel * 0.3,
+                  transition: "all 0.2s ease-out"
+                }}
+              />
+              <div 
+                className="absolute inset-0 rounded-full border-2 border-red-300/50 pointer-events-none"
+                style={{
+                  transform: `scale(${1 + audioLevel * 0.8})`,
+                  opacity: 0.5 - audioLevel * 0.2,
+                  transition: "all 0.25s ease-out"
+                }}
+              />
+            </>
           )}
-        </button>
-        
-        {/* Ring indicators for audio level */}
-        {isRecording && (
-          <>
-            <div 
-              className="absolute rounded-full border-4 border-red-300 pointer-events-none"
-              style={{
-                width: `${100 + audioLevel * 60}%`,
-                height: `${100 + audioLevel * 60}%`,
-                opacity: 0.3 + audioLevel * 0.5,
-                transition: "all 0.1s ease-out"
-              }}
-            />
-            <div 
-              className="absolute rounded-full border-2 border-red-400 pointer-events-none"
-              style={{
-                width: `${120 + audioLevel * 80}%`,
-                height: `${120 + audioLevel * 80}%`,
-                opacity: 0.2 + audioLevel * 0.3,
-                transition: "all 0.15s ease-out"
-              }}
-            />
-          </>
-        )}
+          
+          <button
+            onClick={toggleRecording}
+            disabled={isProcessing && !isRecording}
+            className="absolute inset-0 rounded-full flex items-center justify-center transition-all duration-100 focus:outline-none text-white shadow-lg"
+            style={{
+              backgroundColor: getMicColor(),
+              transform: getMicSize(),
+              transition: "transform 0.1s ease-out, background-color 0.1s ease-out"
+            }}
+            aria-label={isRecording ? "Stop recording" : "Start recording"}
+            data-testid="voice-recorder-button"
+          >
+            {isRecording ? (
+              <Square size={24} />
+            ) : (
+              <Mic size={24} />
+            )}
+          </button>
+        </div>
         
         <div className="mt-2 text-sm font-medium">
           {isRecording ? "Tap to stop" : "Tap to record"}
