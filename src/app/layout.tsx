@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+// app/layout.tsx
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
@@ -14,17 +15,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Toolhouse Assistant",
-  description: "Voice and chat interface for Toolhouse AI assistant",
+  title: "NotesAI - Smart Note Taking",
+  description: "A powerful note-taking app with voice input and AI capabilities",
   generator: "Next.js",
-  applicationName: "Toolhouse Assistant",
-  keywords: ["AI", "Voice", "Chat", "Assistant", "Toolhouse"],
+  applicationName: "NotesAI",
+  keywords: ["Notes", "Productivity", "Voice", "AI", "Notion"],
   authors: [
     {
-      name: "Toolhouse Team",
+      name: "Your Name",
     },
   ],
-  viewport: "width=device-width, initial-scale=1",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
   colorScheme: "dark light",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f9fafb" },
@@ -42,7 +47,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Providers appName="Toolhouse Assistant" version="1.1.0">
+        <Providers appName="NotesAI" version="1.0.0">
           {children}
         </Providers>
       </body>

@@ -1,317 +1,241 @@
+// app/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import VoiceAssistant from "@/components/VoiceAssistant";
-import VoiceOnlyMode from "@/components/VoiceOnlyMode";
-import ChatOnlyMode from "@/components/ChatOnlyMode";
-import ModeSelector from "@/components/ModeSelector";
-import { Settings } from "lucide-react";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import Link from "next/link";
+import { File, Plus, Search, Mic, MessageSquare, Bot } from "lucide-react";
+import { Document } from "@/models/document";
+import { getAllDocuments, createDocument } from "@/services/documentService";
 import logger from "@/utils/logger";
-import audioLogger from "@/utils/audioLogger";
-import { useLogger } from "@/contexts/LoggerContext";
-import performanceUtils from "@/utils/performance";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { useRouter } from "next/navigation";
+import { v4 as uuidv4 } from "uuid";
 
-// Define the interaction modes
-type InteractionMode = "selection" | "voice-only" | "chat-only" | "combined";
+export default function HomePage() {
+  const router = useRouter();
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [activeMode, setActiveMode] = useState<'notes' | 'chat'>('notes');
 
-export default function Home() {
-  const [mode, setMode] = useState<InteractionMode>("selection");
-  const [activeMicId, setActiveMicId] = useState<string>("");
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [availableMics, setAvailableMics] = useState<MediaDeviceInfo[]>([]);
-  const { logNavigation, logEvent, logInteraction } = useLogger();
-
-  // Log navigation to the page
   useEffect(() => {
-    logger.info('session', 'Application started');
-    logEvent('app', 'init', { 
-      initialMode: mode, 
-      timestamp: new Date().toISOString() 
-    });
-    
-    // Performance metrics for page load
-    if (typeof window !== 'undefined') {
-      const navigationTiming = performanceUtils.getEntriesByType('navigation')[0];
-      if (navigationTiming) {
-        logger.info('performance', 'Page loaded', {
-          loadTime: navigationTiming.duration,
-          domContentLoaded: navigationTiming.domContentLoadedEventEnd - navigationTiming.domContentLoadedEventStart,
-          domComplete: navigationTiming.domComplete,
-          redirectCount: navigationTiming.redirectCount,
-          type: navigationTiming.type
-        });
+    const loadDocuments = async () => {
+      try {
+        setIsLoading(true);
+        const docs = await getAllDocuments();
+        setDocuments(docs);
+        logger.info('document', `Loaded ${docs.length} documents`);
+      } catch (error) {
+        setError(`Failed to load documents: ${(error as Error).message}`);
+        logger.error('document', 'Error loading documents', { error });
+      } finally {
+        setIsLoading(false);
       }
-    }
-    
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
+
+    loadDocuments();
   }, []);
 
-  // Load available audio devices
-  useEffect(() => {
-    const loadAudioDevices = async () => {
-      try {
-        performanceUtils.start('load-audio-devices');
-        logger.debug('audio', 'Loading audio devices');
-        
-        // Request microphone permission
-        try {
-          await navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-              // Stop the stream immediately after getting permission
-              stream.getTracks().forEach(track => track.stop());
-              audioLogger.logMicrophoneAccess(true);
-            })
-            .catch(err => {
-              logger.error('audio', "Microphone permission denied:", err);
-              audioLogger.logMicrophoneAccess(false, err);
-              return;
-            });
-        } catch (error) {
-          logger.error('audio', "Error requesting microphone access:", error);
-          audioLogger.logMicrophoneAccess(false, error);
-        }
-
-        // Get list of devices
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const audioInputs = devices.filter(device => device.kind === "audioinput");
-          setAvailableMics(audioInputs);
-          audioLogger.logDevices(audioInputs);
-          
-          // If no active mic is set but we have devices, set the default one
-          if (!activeMicId && audioInputs.length > 0) {
-            setActiveMicId(audioInputs[0].deviceId);
-            audioLogger.logDeviceSelection(audioInputs[0].deviceId);
-          }
-          
-          logger.debug('audio', `Found ${audioInputs.length} audio input devices`);
-        } catch (error) {
-          logger.error('audio', "Error enumerating devices:", error);
-        }
-        
-        performanceUtils.end('load-audio-devices');
-      } catch (err) {
-        logger.error('audio', "Error in loadAudioDevices:", err);
-      }
-    };
-
-    loadAudioDevices();
-
-    // Listen for device changes (e.g., when new microphones are plugged in)
-    const handleDeviceChange = async () => {
-      logger.debug('audio', 'Media devices changed, reloading devices');
-      await loadAudioDevices();
-    };
-    
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
-    
-    return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
-    };
-  }, [activeMicId]);
-
-  // Log mode changes
-  useEffect(() => {
-    if (mode !== 'selection') {
-      logger.info('ui', `Mode changed to ${mode}`);
-      logNavigation('selection', mode);
-      
-      logEvent('app', 'mode_change', { 
-        mode, 
-        micId: activeMicId || 'default'
+  const handleCreateDocument = async () => {
+    try {
+      const newDoc = await createDocument({
+        title: "Untitled",
+        blocks: [{ id: uuidv4(), type: "text", content: "" }]
       });
-    }
-  }, [mode, activeMicId, logNavigation, logEvent]);
-
-  // Handle mode selection
-  const handleModeSelect = (selectedMode: InteractionMode) => {
-    const previousMode = mode;
-    performanceUtils.start(`mode-change-${previousMode}-to-${selectedMode}`);
-    
-    setMode(selectedMode);
-    logInteraction('mode-selector', 'select', { 
-      previousMode,
-      newMode: selectedMode
-    });
-    
-    performanceUtils.end(`mode-change-${previousMode}-to-${selectedMode}`);
-  };
-
-  // Function to render the appropriate component based on mode
-  const renderContent = () => {
-    switch (mode) {
-      case "voice-only":
-        return (
-          <ErrorBoundary componentName="VoiceOnlyMode">
-            <VoiceOnlyMode activeMicId={activeMicId} />
-          </ErrorBoundary>
-        );
-      case "chat-only":
-        return (
-          <ErrorBoundary componentName="ChatOnlyMode">
-            <ChatOnlyMode />
-          </ErrorBoundary>
-        );
-      case "combined":
-        return (
-          <ErrorBoundary componentName="VoiceAssistant">
-            <VoiceAssistant activeMicId={activeMicId} />
-          </ErrorBoundary>
-        );
-      default:
-        return (
-          <ErrorBoundary componentName="ModeSelector">
-            <ModeSelector onSelectMode={handleModeSelect} />
-          </ErrorBoundary>
-        );
+      
+      setDocuments(prev => [newDoc, ...prev]);
+      logger.info('document', 'Created new document', { documentId: newDoc.id });
+      
+      // Navigate to the new document
+      router.push(`/documents/${newDoc.id}`);
+    } catch (error) {
+      setError(`Failed to create document: ${(error as Error).message}`);
+      logger.error('document', 'Error creating document', { error });
     }
   };
 
-  // Helper to get a readable name for the device
-  const getDeviceName = (device: MediaDeviceInfo) => {
-    return device.label || `Microphone ${availableMics.indexOf(device) + 1}`;
-  };
+  const filteredDocuments = searchQuery
+    ? documents.filter(doc => 
+        doc.title.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : documents;
 
-  // Handle microphone selection
-  const handleMicSelect = (deviceId: string) => {
-    const previousMicId = activeMicId;
-    setActiveMicId(deviceId);
-    setIsSettingsOpen(false);
-    
-    // Find device name for logging
-    const device = availableMics.find(mic => mic.deviceId === deviceId);
-    const deviceName = device ? getDeviceName(device) : deviceId;
-    
-    logger.info('audio', `Microphone changed: ${deviceName} (${deviceId})`);
-    logEvent('audio', 'microphone_change', { 
-      previousId: previousMicId,
-      newId: deviceId,
-      name: deviceName
-    });
-  };
+  // Sort by latest updated
+  const sortedDocuments = [...filteredDocuments].sort((a, b) => {
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 text-foreground">
-      <header className="sticky top-0 z-10 py-3 px-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Toolhouse Assistant
-          </h1>
-          
-          <div className="flex items-center space-x-2">
-            {/* Microphone settings button */}
-            {(mode === "voice-only" || mode === "combined") && (
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setIsSettingsOpen(!isSettingsOpen);
-                    logInteraction('microphone-settings', isSettingsOpen ? 'close' : 'open');
-                  }}
-                  className="p-2 rounded-full text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Microphone Settings"
-                  data-testid="mic-settings-button"
+    <ErrorBoundary componentName="HomePage">
+      <div className="min-h-screen bg-white dark:bg-gray-900">
+        {/* Header */}
+        <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between h-16 items-center">
+              <div className="flex items-center">
+                <Bot className="h-8 w-8 text-blue-600" />
+                <h1 className="ml-2 text-xl font-bold">NotesAI</h1>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <button 
+                  className={`px-3 py-1 rounded-md ${
+                    activeMode === 'notes' 
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' 
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                  onClick={() => setActiveMode('notes')}
                 >
-                  <Settings size={16} />
+                  <File className="h-4 w-4 inline mr-1" />
+                  Notes
                 </button>
                 
-                {isSettingsOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                    <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                      <h3 className="font-medium text-sm">Microphone Settings</h3>
-                      <button 
-                        onClick={() => {
-                          setIsSettingsOpen(false);
-                          logInteraction('microphone-settings', 'close');
-                        }}
-                        className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                      >
-                        &times;
-                      </button>
-                    </div>
-
-                    <div className="p-3">
-                      {availableMics.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No microphones detected.</p>
-                      ) : (
-                        <ul className="space-y-1">
-                          {availableMics.map((device) => (
-                            <li key={device.deviceId}>
-                              <button
-                                onClick={() => handleMicSelect(device.deviceId)}
-                                className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between ${
-                                  activeMicId === device.deviceId
-                                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
-                                    : "hover:bg-gray-100 dark:hover:bg-gray-800"
-                                }`}
-                                data-device-id={device.deviceId}
-                              >
-                                <span className="truncate max-w-[180px]">{getDeviceName(device)}</span>
-                                {activeMicId === device.deviceId && (
-                                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                                )}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <button 
+                  className={`px-3 py-1 rounded-md ${
+                    activeMode === 'chat' 
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' 
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                  onClick={() => setActiveMode('chat')}
+                >
+                  <MessageSquare className="h-4 w-4 inline mr-1" />
+                  Chat
+                </button>
               </div>
-            )}
-            
-            {/* Mode selector button */}
-            {mode !== "selection" && (
-              <button 
-                onClick={() => {
-                  setMode("selection");
-                  logInteraction('change-mode-button', 'click');
-                }}
-                className="text-sm px-3 py-1 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
-                data-testid="change-mode-button"
-              >
-                Change Mode
-              </button>
-            )}
+            </div>
           </div>
-        </div>
-      </header>
-      
-      <main className="flex-1 w-full max-w-3xl mx-auto p-4 md:p-6">
-        {renderContent()}
-      </main>
-      
-      <footer className="py-3 px-4 border-t border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm text-center text-sm text-gray-500 dark:text-gray-400">
-        <p>Powered by Next.js, OpenAI, and Toolhouse</p>
+        </header>
+
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Notes Mode */}
+          {activeMode === 'notes' && (
+            <>
+              {/* Page Title and Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                <h2 className="text-2xl font-bold">My Notes</h2>
+                
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search notes..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 w-full sm:w-60 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg"
+                    />
+                  </div>
+                  
+                  {/* Create Note Button */}
+                  <button
+                    onClick={handleCreateDocument}
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    New Note
+                  </button>
+                </div>
+              </div>
+              
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg">
+                  {error}
+                  <button 
+                    className="ml-2 underline"
+                    onClick={() => window.location.reload()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              
+              {/* Notes Grid */}
+              {isLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : sortedDocuments.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  <File className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No notes yet</h3>
+                  <p className="text-gray-500 dark:text-gray-400 mb-6">
+                    {searchQuery ? "No matching notes found" : "Create your first note to get started"}
+                  </p>
+                  {!searchQuery && (
+                    <button
+                      onClick={handleCreateDocument}
+                      className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      <Plus className="h-5 w-5 mr-2" />
+                      Create Note
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {sortedDocuments.map(doc => (
+                    <Link 
+                      key={doc.id}
+                      href={`/documents/${doc.id}`}
+                      className="block p-6 border border-gray-200 dark:border-gray-800 rounded-lg hover:shadow-md transition-shadow bg-white dark:bg-gray-800"
+                    >
+                      <h3 className="text-lg font-semibold mb-2 truncate">{doc.title || "Untitled"}</h3>
+                      <p className="text-gray-500 dark:text-gray-400 text-sm mb-4 line-clamp-2">
+                        {doc.blocks[0]?.content || "No content yet"}
+                      </p>
+                      <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
+                        <span>{new Date(doc.updatedAt).toLocaleDateString()}</span>
+                        <span>{doc.blocks.length} blocks</span>
+                      </div>
+                    </Link>
+                  ))}
+                  
+                  {/* Add New Note Card */}
+                  <button
+                    onClick={handleCreateDocument}
+                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-2">
+                      <Plus className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <span className="text-sm font-medium text-blue-600 dark:text-blue-400">Create New Note</span>
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          
+          {/* Chat Mode */}
+          {activeMode === 'chat' && (
+            <div className="max-w-3xl mx-auto">
+              <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                <MessageSquare className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium mb-2">Chat Mode</h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Open a note and use the chat assistant icon to chat with your notes
+                </p>
+                <button
+                  onClick={handleCreateDocument}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  Create New Note
+                </button>
+              </div>
+            </div>
+          )}
+        </main>
         
-        {/* Development mode footer content */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="text-xs mt-1">
-            <span>Development Mode</span>
-            {" | "}
-            <button 
-              onClick={() => {
-                const appVersion = "1.1.0";
-                const appBuild = Date.now().toString().substring(0, 10);
-                logger.info('session', 'Debug info', {
-                  version: appVersion,
-                  build: appBuild,
-                  mode,
-                  activeMicId,
-                  availableMics: availableMics.length,
-                  userAgent: navigator.userAgent
-                });
-                logEvent('debug', 'show_info', { version: appVersion, build: appBuild });
-                alert(`App v${appVersion} (${appBuild})\nMode: ${mode}\nMic: ${activeMicId}`);
-              }}
-              className="text-blue-500 hover:underline"
-            >
-              Debug Info
-            </button>
+        {/* Footer */}
+        <footer className="py-6 px-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="max-w-7xl mx-auto text-center text-sm text-gray-500 dark:text-gray-400">
+            <p>NotesAI - Smart note taking with AI assistance</p>
           </div>
-        )}
-      </footer>
-    </div>
+        </footer>
+      </div>
+    </ErrorBoundary>
   );
 }
