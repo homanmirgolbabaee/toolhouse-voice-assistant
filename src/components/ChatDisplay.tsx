@@ -6,6 +6,7 @@ import logger from "@/utils/logger";
 import { useLogger } from "@/contexts/LoggerContext";
 import performanceUtils from "@/utils/performance";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import MessageFormatter from "./MessageFormatter";
 
 interface Message {
   content: string;
@@ -81,94 +82,6 @@ function ChatDisplay({ messages, isThinking = false }: ChatDisplayProps) {
     return () => clearTimeout(timeoutId);
   }, [messages, isThinking, logEvent]);
 
-  // Function to detect code blocks with language
-  const detectCodeBlockLanguage = (codeBlock: string): string => {
-    // Check for language identifier at the beginning of the code block
-    const firstLine = codeBlock.trim().split('\n')[0];
-    const languageMatch = /^[a-zA-Z0-9#+-]+/.exec(firstLine);
-    
-    if (languageMatch && languageMatch[0]) {
-      // Common language identifiers
-      const commonLanguages = ['javascript', 'typescript', 'python', 'html', 'css', 'java', 'c', 'cpp', 'csharp', 'php', 'ruby', 'go', 'rust', 'swift', 'kotlin', 'shell', 'bash', 'json', 'xml', 'yaml', 'sql'];
-      const detectedLang = languageMatch[0].toLowerCase();
-      
-      if (commonLanguages.includes(detectedLang) || 
-          commonLanguages.some(lang => detectedLang.includes(lang))) {
-        return detectedLang;
-      }
-    }
-    
-    // Try to guess language from content
-    if (codeBlock.includes('function') && (codeBlock.includes('=>') || codeBlock.includes('{'))) {
-      return 'javascript';
-    }
-    if (codeBlock.includes('import') && codeBlock.includes('from') && codeBlock.includes('def ')) {
-      return 'python';
-    }
-    if (codeBlock.includes('<html') || (codeBlock.includes('<div') && codeBlock.includes('</div>'))) {
-      return 'html';
-    }
-    if (codeBlock.includes('SELECT') && codeBlock.includes('FROM') && codeBlock.includes('WHERE')) {
-      return 'sql';
-    }
-    
-    // Default
-    return '';
-  };
-
-  // Function to format message content with code blocks
-  const formatMessage = (content: string) => {
-    performanceUtils.start('format-message');
-    
-    try {
-      // Simple regex to detect code blocks (text between triple backticks)
-      const codeBlockRegex = /```([\s\S]*?)```/g;
-      const parts = content.split(codeBlockRegex);
-
-      // No code blocks, just return the text
-      if (parts.length === 1) {
-        const result = <p className="whitespace-pre-wrap">{content}</p>;
-        performanceUtils.end('format-message');
-        return result;
-      }
-
-      // If there are code blocks, process them
-      const result = (
-        <div className="whitespace-pre-wrap">
-          {parts.map((part, index) => {
-            // Even indices are regular text, odd indices are code
-            if (index % 2 === 0) {
-              return <span key={index}>{part}</span>;
-            } else {
-              const language = detectCodeBlockLanguage(part);
-              return (
-                <pre 
-                  key={index} 
-                  className={`bg-gray-100 dark:bg-gray-800 p-3 my-2 rounded-md overflow-x-auto font-mono text-sm ${language ? `language-${language}` : ''}`}
-                  data-language={language || 'text'}
-                >
-                  {language && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-sans">
-                      {language}
-                    </div>
-                  )}
-                  <code>{part}</code>
-                </pre>
-              );
-            }
-          })}
-        </div>
-      );
-      
-      performanceUtils.end('format-message');
-      return result;
-    } catch (error) {
-      logger.error('ui', 'Error formatting message:', { error, content });
-      performance.end('format-message');
-      return <p className="whitespace-pre-wrap">{content}</p>;
-    }
-  };
-
   return (
     <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-gray-800">
       {messages.length === 0 ? (
@@ -193,7 +106,10 @@ function ChatDisplay({ messages, isThinking = false }: ChatDisplayProps) {
                       : 'bg-gray-100 dark:bg-gray-900 text-gray-500 italic text-sm'
                 }`}
               >
-                {formatMessage(message.content)}
+                <MessageFormatter 
+                  content={message.content} 
+                  className="prose prose-sm dark:prose-invert max-w-none"
+                />
                 
                 {/* Debug timestamp in development mode */}
                 {process.env.NODE_ENV === 'development' && (

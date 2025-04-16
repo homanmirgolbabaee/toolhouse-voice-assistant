@@ -1,32 +1,23 @@
-// src/components/SimplifiedVoiceRecorder.tsx
+// src/hooks/useAudioRecorder.ts
 
-import React, { useState, useRef, useEffect } from "react";
-import { Mic, Square, AlertCircle } from "lucide-react";
-import logger from "@/utils/logger";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import { useState, useRef, useEffect } from 'react';
+import logger from '@/utils/logger';
 
-interface SimplifiedVoiceRecorderProps {
-  onAudioCaptured: (blob: Blob) => Promise<void>;
-  isProcessing: boolean;
-  activeMicId?: string;
-  size?: 'sm' | 'md' | 'lg';
-  className?: string;
-  disabled?: boolean;
+export interface AudioRecorderOptions {
+  onAudioCaptured?: (blob: Blob) => Promise<void>;
+  deviceId?: string;
+  onAudioLevelChange?: (level: number) => void;
 }
 
-function SimplifiedVoiceRecorder({ 
-  onAudioCaptured, 
-  isProcessing, 
-  activeMicId,
-  size = 'md',
-  className = "",
-  disabled = false
-}: SimplifiedVoiceRecorderProps) {
-  // Local state for UI-specific behavior
+export function useAudioRecorder({
+  onAudioCaptured,
+  deviceId,
+  onAudioLevelChange
+}: AudioRecorderOptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   
   // Refs for audio handling
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -55,32 +46,8 @@ function SimplifiedVoiceRecorder({
     };
   }, []);
 
-  // Update timer during recording
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      setRecordingTime(0);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [isRecording]);
-
   // Toggle recording state
   const toggleRecording = async () => {
-    if (disabled || isProcessing) return;
-    
     if (!isRecording) {
       await startRecording();
     } else {
@@ -92,18 +59,22 @@ function SimplifiedVoiceRecorder({
   const startRecording = async () => {
     try {
       logger.debug('audio', 'Starting voice recording');
-      setRecordingError(null);
       
       // Reset audio chunks and state
       audioChunksRef.current = [];
       recordingStartTimeRef.current = performance.now();
-      setRecordingTime(0);
+      setRecordingDuration(0);
+      
+      // Start a timer to update the duration display
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
       
       // Get audio stream with specified device if available
       const constraints: MediaStreamConstraints = {
-        audio: activeMicId
+        audio: deviceId
           ? {
-              deviceId: { exact: activeMicId },
+              deviceId: { exact: deviceId },
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true
@@ -148,13 +119,13 @@ function SimplifiedVoiceRecorder({
       updateAudioLevel();
       
       logger.info('audio', "Recording started", { 
-        micId: activeMicId || "default",
+        micId: deviceId || "default",
         audioTracks: stream.getAudioTracks().length,
         audioSettings: stream.getAudioTracks()[0]?.getSettings()
       });
     } catch (error) {
       logger.error("audio", "Error starting recording:", error);
-      setRecordingError(`Could not access microphone: ${(error as Error).message}`);
+      throw new Error(`Could not access microphone: ${(error as Error).message}`);
     }
   };
 
@@ -196,18 +167,21 @@ function SimplifiedVoiceRecorder({
           
           if (audioBlob.size > 0) {
             try {
-              setRecordingError(null);
-              await onAudioCaptured(audioBlob);
+              setIsProcessing(true);
+              
+              if (onAudioCaptured) {
+                await onAudioCaptured(audioBlob);
+              }
             } catch (error) {
-              setRecordingError((error as Error).message);
               logger.error('audio', 'Error processing captured audio:', error);
+              throw error;
+            } finally {
+              setIsProcessing(false);
             }
           } else {
-            setRecordingError('Audio recorded is empty. Please try again.');
             logger.warn('audio', 'Audio blob is empty, not processing');
           }
         } else {
-          setRecordingError('No audio recorded. Please try again.');
           logger.warn('audio', 'No audio chunks recorded');
         }
       };
@@ -234,6 +208,9 @@ function SimplifiedVoiceRecorder({
       const normalized = Math.min(average / 128, 1); // 0-1 scale
       
       setAudioLevel(normalized);
+      if (onAudioLevelChange) {
+        onAudioLevelChange(normalized);
+      }
       
       // Continue animation loop
       animationFrameRef.current = requestAnimationFrame(updateLevel);
@@ -249,108 +226,16 @@ function SimplifiedVoiceRecorder({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Determine button size
-  const buttonSize = {
-    sm: {
-      button: "w-8 h-8",
-      icon: 14
-    },
-    md: {
-      button: "w-10 h-10",
-      icon: 18
-    },
-    lg: {
-      button: "w-12 h-12",
-      icon: 22
-    }
-  }[size];
-
-  // Render recording time indicator
-  const renderRecordingTime = () => {
-    if (!isRecording) return null;
-    
-    return (
-      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-red-500 text-white text-xs font-medium py-0.5 px-2 rounded-full animate-pulse flex items-center">
-        <span className="w-1.5 h-1.5 bg-white rounded-full mr-1"></span>
-        {formatTime(recordingTime)}
-      </div>
-    );
+  return {
+    isRecording,
+    isProcessing,
+    audioLevel,
+    recordingDuration,
+    formattedDuration: formatTime(recordingDuration),
+    startRecording,
+    stopRecording,
+    toggleRecording
   };
-
-  return (
-    <div className={`relative flex flex-col items-center ${className}`}>
-      {/* Recording time indicator */}
-      {renderRecordingTime()}
-      
-      <div className="relative">
-        {/* Audio level indicator rings */}
-        {isRecording && (
-          <>
-            <div 
-              className="absolute inset-0 rounded-full border-2 border-red-400/50 pointer-events-none"
-              style={{
-                transform: `scale(${1 + audioLevel * 0.5})`,
-                opacity: 0.5 - audioLevel * 0.2,
-                transition: "all 0.2s ease-out"
-              }}
-            />
-            <div 
-              className="absolute inset-0 rounded-full border border-red-300/30 pointer-events-none"
-              style={{
-                transform: `scale(${1 + audioLevel * 0.8})`,
-                opacity: 0.3 - audioLevel * 0.1,
-                transition: "all 0.2s ease-out"
-              }}
-            />
-          </>
-        )}
-        
-        {/* Processing state overlay */}
-        {isProcessing && !isRecording && (
-          <div className="absolute inset-0 rounded-full bg-gray-500/50 flex items-center justify-center z-10">
-            <div className="w-2/3 h-2/3 border-4 border-t-blue-500 border-gray-200 rounded-full animate-spin"></div>
-          </div>
-        )}
-        
-        {/* Main button */}
-        <button
-          onClick={toggleRecording}
-          disabled={disabled || (isProcessing && !isRecording)}
-          className={`${buttonSize.button} rounded-full flex items-center justify-center transition-all duration-100 focus:outline-none text-white shadow-lg ${
-            isRecording 
-              ? 'bg-red-500 text-white' 
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-          } ${(disabled || (isProcessing && !isRecording)) ? 'opacity-50 cursor-not-allowed' : ''}`}
-          style={{
-            transform: isRecording ? `scale(${1 + audioLevel * 0.2})` : 'scale(1)',
-          }}
-          title={isRecording ? "Stop recording" : "Record voice message"}
-          data-testid="voice-recorder-button"
-        >
-          {isRecording ? (
-            <Square size={buttonSize.icon} />
-          ) : (
-            <Mic size={buttonSize.icon} />
-          )}
-        </button>
-      </div>
-      
-      {/* Error message */}
-      {recordingError && (
-        <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs rounded-md flex items-start">
-          <AlertCircle size={14} className="mr-1 mt-0.5 flex-shrink-0" />
-          <span>{recordingError}</span>
-        </div>
-      )}
-    </div>
-  );
 }
 
-// Export with error boundary wrapper
-export default function VoiceRecorderWithErrorHandling(props: SimplifiedVoiceRecorderProps) {
-  return (
-    <ErrorBoundary componentName="SimplifiedVoiceRecorderRoot">
-      <SimplifiedVoiceRecorder {...props} />
-    </ErrorBoundary>
-  );
-}
+export default useAudioRecorder;

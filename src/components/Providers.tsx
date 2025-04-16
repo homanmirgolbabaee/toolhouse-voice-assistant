@@ -1,3 +1,4 @@
+// src/components/Providers.tsx
 "use client";
 
 import React, { PropsWithChildren, useState, useEffect } from "react";
@@ -15,7 +16,7 @@ interface ProvidersProps extends PropsWithChildren {
 
 export default function Providers({
   children,
-  appName = "Toolhouse Assistant",
+  appName = "NotesAI",
   version = "1.0.0",
   environment = process.env.NODE_ENV,
 }: ProvidersProps) {
@@ -23,50 +24,62 @@ export default function Providers({
 
   // Initialize error tracking and other utilities
   useEffect(() => {
-    logger.info('session', 'Initializing application', {
-      appName,
-      version,
-      environment
-    });
+    // Only run in browser environment
+    if (typeof window === 'undefined') return;
     
-    // Initialize error tracking
-    errorTracker.init();
-    
-    // Log app version and environment
-    logger.info('session', `App: ${appName} v${version} (${environment})`);
-    
-    // Mark as mounted
-    setMounted(true);
-    
-    // Add some browser information for debugging
-    if (typeof window !== 'undefined') {
-      logger.debug('session', 'Browser info', {
-        userAgent: navigator.userAgent,
-        language: navigator.language,
-        online: navigator.onLine,
-        memory: navigator.deviceMemory,
-        screenSize: {
-          width: window.screen.width,
-          height: window.screen.height
-        },
-        viewport: {
-          width: window.innerWidth,
-          height: window.innerHeight
-        }
+    try {
+      logger.info('session', 'Initializing application', {
+        appName,
+        version,
+        environment
       });
+      
+      // Initialize error tracking
+      errorTracker.init();
+      
+      // Log app version and environment
+      logger.info('session', `App: ${appName} v${version} (${environment})`);
+      
+      // Mark as mounted
+      setMounted(true);
+      
+      // Add some browser information for debugging
+      if (typeof window !== 'undefined') {
+        logger.debug('session', 'Browser info', {
+          userAgent: navigator.userAgent,
+          language: navigator.language,
+          online: navigator.onLine,
+          screenSize: {
+            width: window.screen.width,
+            height: window.screen.height
+          },
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error initializing providers:', error);
     }
     
     return () => {
-      logger.info('session', 'Application cleanup');
+      if (typeof window !== 'undefined') {
+        logger.info('session', 'Application cleanup');
+      }
     };
   }, [appName, version, environment]);
 
   // Handle global errors
   const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
-    errorTracker.trackError(error, 'ApplicationRoot', {
-      reactErrorInfo: errorInfo,
-      type: 'boundary'
-    });
+    try {
+      errorTracker.trackError(error, 'ApplicationRoot', {
+        reactErrorInfo: errorInfo,
+        type: 'boundary'
+      });
+    } catch (err) {
+      console.error('Error in error tracking:', err);
+    }
   };
 
   return (
@@ -80,7 +93,7 @@ export default function Providers({
         environment={environment}
       >
         {children}
-        {mounted && <DebugPanel showOnlyInDevelopment={true} />}
+        {process.env.NODE_ENV === 'development' && <DebugPanel showOnlyInDevelopment={true} />}
       </LoggerProvider>
     </ErrorBoundary>
   );

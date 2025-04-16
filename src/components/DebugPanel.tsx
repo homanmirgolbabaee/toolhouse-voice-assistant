@@ -27,14 +27,13 @@ interface StateSnapshot {
 
 export default function DebugPanel({ showOnlyInDevelopment = true }: DebugPanelProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'logs' | 'state' | 'network' | 'performance'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'state' | 'network' | 'performance'| 'audio'>('logs');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [stateSnapshots, setStateSnapshots] = useState<StateSnapshot[]>([]);
   const [networkCalls, setNetworkCalls] = useState<any[]>([]);
   const [performanceMetrics, setPerformanceMetrics] = useState<any[]>([]);
   const [filter, setFilter] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
-
   // Initialize the panel
   useEffect(() => {
     // Only show in development mode if showOnlyInDevelopment is true
@@ -299,7 +298,7 @@ export default function DebugPanel({ showOnlyInDevelopment = true }: DebugPanelP
                 ? 'text-blue-600 border-b-2 border-blue-600'
                 : 'text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'
             }`}
-            onClick={() => setActiveTab('state')}
+            onClick={() => setActiveTab('audio')}
           >
             <div className="flex items-center gap-2">
               <Cpu size={16} />

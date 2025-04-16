@@ -1,4 +1,4 @@
-// components/Sidebar.tsx
+// components/Sidebar.tsx - Updated with ElevenLabs TTS settings
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -12,11 +12,13 @@ import {
   Folder, 
   Plus, 
   Search, 
-  Settings 
+  Settings,
+  Headphones,
 } from "lucide-react";
 import logger from "@/utils/logger";
 import { Document } from "@/models/document";
 import { getAllDocuments, createDocument } from "@/services/documentService";
+
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -99,9 +101,12 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
         <div className="flex-1 overflow-auto">
           {/* Collapsed document list would go here */}
         </div>
-        <button className="mx-auto mt-auto p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-          <Settings size={20} />
-        </button>
+        <div className="mx-auto mt-auto flex flex-col items-center space-y-3 mb-4">
+          <ElevenLabsSettings />
+          <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
+            <Settings size={20} />
+          </button>
+        </div>
       </div>
     );
   }
@@ -223,11 +228,14 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
       
       {/* Sidebar Footer */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
-        <button className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 p-2">
-          <Settings size={18} />
-        </button>
+        <div className="flex items-center space-x-3">
+          <ElevenLabsSettings />
+          <button className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 p-2">
+            <Settings size={18} />
+          </button>
+        </div>
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          <span>John Doe</span>
+          <span>NotesAI</span>
         </div>
       </div>
     </div>
