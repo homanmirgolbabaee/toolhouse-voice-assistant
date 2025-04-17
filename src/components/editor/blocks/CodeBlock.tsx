@@ -1,7 +1,33 @@
 // components/editor/blocks/CodeBlock.tsx
 import React, { useRef, useEffect, useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Code as CodeIcon } from "lucide-react";
 import logger from "@/utils/logger";
+import Prism from 'prismjs';
+
+// Import basic Prism styles - you'll need to add this package
+// If you don't have Prism.js installed, run: npm install prismjs
+import 'prismjs/themes/prism-tomorrow.css';
+
+// Import language support
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
+import 'prismjs/components/prism-css';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-java';
+import 'prismjs/components/prism-c';
+import 'prismjs/components/prism-cpp';
+import 'prismjs/components/prism-csharp';
+import 'prismjs/components/prism-ruby';
+import 'prismjs/components/prism-go';
+import 'prismjs/components/prism-rust';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-markdown';
+import 'prismjs/components/prism-php';
 
 interface CodeBlockProps {
   id: string;
@@ -17,18 +43,27 @@ interface CodeBlockProps {
 }
 
 const SUPPORTED_LANGUAGES = [
-  "javascript",
-  "typescript",
-  "python",
-  "html",
-  "css",
-  "json",
-  "markdown",
-  "jsx",
-  "tsx",
-  "bash",
-  "sql",
-  "plain"
+  { id: "javascript", display: "JavaScript" },
+  { id: "typescript", display: "TypeScript" },
+  { id: "jsx", display: "JSX" },
+  { id: "tsx", display: "TSX" },
+  { id: "python", display: "Python" },
+  { id: "html", display: "HTML" },
+  { id: "css", display: "CSS" },
+  { id: "java", display: "Java" },
+  { id: "c", display: "C" },
+  { id: "cpp", display: "C++" },
+  { id: "csharp", display: "C#" },
+  { id: "ruby", display: "Ruby" },
+  { id: "go", display: "Go" },
+  { id: "rust", display: "Rust" },
+  { id: "bash", display: "Bash" },
+  { id: "sql", display: "SQL" },
+  { id: "json", display: "JSON" },
+  { id: "yaml", display: "YAML" },
+  { id: "markdown", display: "Markdown" },
+  { id: "php", display: "PHP" },
+  { id: "plain", display: "Plain Text" }
 ];
 
 const CodeBlock: React.FC<CodeBlockProps> = ({
@@ -44,11 +79,13 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   readOnly = false
 }) => {
   const contentEditableRef = useRef<HTMLPreElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
   const [localContent, setLocalContent] = useState(content);
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const previousContentRef = useRef(content);
   const selectionPositionRef = useRef<{ start: number; end: number } | null>(null);
+  const [lineNumbers, setLineNumbers] = useState<string[]>([]);
 
   // Only update the content from props when the block is not active
   // This prevents cursor jumps while typing
@@ -57,6 +94,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
       contentEditableRef.current.textContent = content;
       setLocalContent(content);
       previousContentRef.current = content;
+      highlightCode(content);
+      updateLineNumbers(content);
     }
   }, [content, isActive]);
 
@@ -96,6 +135,42 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
     }
   }, [isActive, content]);
 
+  // Highlight code when language changes
+  useEffect(() => {
+    highlightCode(localContent);
+  }, [language, localContent]);
+
+  // Update line numbers when content changes
+  useEffect(() => {
+    updateLineNumbers(localContent);
+  }, [localContent]);
+
+  // Update line numbers based on content
+  const updateLineNumbers = (code: string) => {
+    const lines = code.split('\n');
+    setLineNumbers(Array.from({ length: lines.length }, (_, i) => String(i + 1)));
+  };
+
+  // Highlight code using Prism.js
+  const highlightCode = (code: string) => {
+    if (!highlightRef.current) return;
+    
+    const langClass = language === 'plain' ? 'language-text' : `language-${language}`;
+    
+    // Apply highlighting
+    try {
+      highlightRef.current.innerHTML = code;
+      highlightRef.current.className = `prism-code ${langClass}`;
+      
+      // Highlight the code
+      if (language !== 'plain') {
+        Prism.highlightElement(highlightRef.current);
+      }
+    } catch (error) {
+      logger.error('editor', 'Error highlighting code:', error);
+    }
+  };
+
   // Capture the current selection position before handling the input
   const saveSelectionPosition = () => {
     if (contentEditableRef.current) {
@@ -118,9 +193,14 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   const handleInput = (e: React.FormEvent<HTMLPreElement>) => {
     saveSelectionPosition();
     const newContent = e.currentTarget.textContent || "";
+    
     setLocalContent(newContent);
     previousContentRef.current = newContent;
     onChange(newContent);
+    
+    // Update highlighting and line numbers
+    highlightCode(newContent);
+    updateLineNumbers(newContent);
   };
 
   const copyToClipboard = () => {
@@ -138,6 +218,8 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   const handleLanguageSelect = (lang: string) => {
     onLanguageChange(lang);
     setShowLanguageDropdown(false);
+    // Re-highlight the code with the new language
+    setTimeout(() => highlightCode(localContent), 0);
   };
 
   // Handle tab key for indentation
@@ -157,33 +239,51 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
     }
   };
 
+  // Find the display name for the current language
+  const currentLanguageDisplay = SUPPORTED_LANGUAGES.find(lang => lang.id === language)?.display || 'Plain Text';
+
   return (
     <div 
-      className={`font-mono rounded-md overflow-hidden transition-colors 
-        ${isActive ? "ring-2 ring-blue-500" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}
+      className={`font-mono rounded-md overflow-hidden transition-colors shadow-sm
+        ${isActive ? "ring-2 ring-blue-500" : "hover:ring-1 hover:ring-gray-300 dark:hover:ring-gray-700"}`}
     >
       {/* Code block header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 text-gray-300">
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-            className="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
+            className="flex items-center space-x-1 text-sm hover:text-gray-100"
           >
-            {language || "plain"}
+            <CodeIcon size={14} className="mr-1" />
+            <span>{currentLanguageDisplay}</span>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              width="12" 
+              height="12" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+              className="ml-1"
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
           </button>
           
           {/* Language dropdown */}
           {showLanguageDropdown && (
-            <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 max-h-60 overflow-y-auto">
+            <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 rounded-md shadow-lg border border-gray-700 max-h-60 overflow-y-auto w-48">
               {SUPPORTED_LANGUAGES.map(lang => (
                 <button
-                  key={lang}
-                  onClick={() => handleLanguageSelect(lang)}
-                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 
-                    ${lang === language ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" : ""}`}
+                  key={lang.id}
+                  onClick={() => handleLanguageSelect(lang.id)}
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-700 
+                    ${lang.id === language ? "bg-gray-700 text-blue-400" : "text-gray-300"}`}
                 >
-                  {lang}
+                  {lang.display}
                 </button>
               ))}
             </div>
@@ -193,7 +293,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
         <button
           type="button"
           onClick={copyToClipboard}
-          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          className="text-gray-400 hover:text-gray-100 transition-colors"
           title="Copy code"
         >
           {copiedToClipboard ? (
@@ -207,30 +307,41 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
         </button>
       </div>
       
-      {/* Code content */}
-      <pre
-        id={`block-${id}`}
-        ref={contentEditableRef}
-        contentEditable={!readOnly}
-        suppressContentEditableWarning
-        className={`p-4 outline-none whitespace-pre-wrap text-sm overflow-auto max-h-96 bg-gray-50 dark:bg-gray-900 ${
-          language === 'javascript' || language === 'typescript' || language === 'jsx' || language === 'tsx' 
-            ? 'text-blue-600 dark:text-blue-400' 
-            : language === 'html' || language === 'xml' 
-              ? 'text-red-600 dark:text-red-400'
-              : language === 'css' 
-                ? 'text-purple-600 dark:text-purple-400'
-                : 'text-gray-800 dark:text-gray-200'
-        }`}
-        onInput={handleInput}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        onKeyDown={handleKeyDown}
-        data-block-type="code"
-        data-language={language}
-        spellCheck="false"
-        dangerouslySetInnerHTML={{ __html: localContent }}
-      />
+      {/* Code content with line numbers */}
+      <div className="relative bg-gray-900 text-gray-200 flex">
+        {/* Line numbers */}
+        <div className="text-right pr-3 py-4 select-none bg-gray-800 text-gray-500 text-xs border-r border-gray-700">
+          {lineNumbers.map((num, i) => (
+            <div key={i} className="leading-relaxed">{num}</div>
+          ))}
+        </div>
+        
+        {/* Code editor */}
+        <div className="relative flex-grow">
+          {/* Highlighted code (read-only, shown behind the editable content) */}
+          <pre
+            ref={highlightRef}
+            className={`prism-code language-${language} absolute inset-0 !m-0 !outline-none py-4 px-3 !bg-transparent pointer-events-none overflow-auto`}
+            aria-hidden="true"
+          ></pre>
+          
+          {/* Editable content (transparent text that sits on top) */}
+          <pre
+            id={`block-${id}`}
+            ref={contentEditableRef}
+            contentEditable={!readOnly}
+            suppressContentEditableWarning
+            className="relative !m-0 !outline-none py-4 px-3 !bg-transparent overflow-auto whitespace-pre z-10 !text-transparent !caret-gray-200"
+            onInput={handleInput}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            onKeyDown={handleKeyDown}
+            data-block-type="code"
+            data-language={language}
+            spellCheck="false"
+          >{localContent}</pre>
+        </div>
+      </div>
     </div>
   );
 };

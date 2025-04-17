@@ -15,7 +15,10 @@ import { v4 as uuidv4 } from "uuid";
 import SimplifiedVoiceRecorder from "@/components/SimplifiedVoiceRecorder";
 import performanceUtils from "@/utils/performance";
 
+import DocumentTTS from '@/components/DocumentTTS';
 
+
+import TTSControls from "@/components/TTSControls";
 
 
 
@@ -529,7 +532,8 @@ export default function DocumentPage() {
           </div>
             
           <div className="flex items-center space-x-3">
-          {/* <DocumentTTS document={document} /> */}
+          <TTSControls />
+          <DocumentTTS document={document} />
 
             <button
               onClick={handleShareDocument}

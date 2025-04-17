@@ -1,5 +1,9 @@
 // components/editor/blocks/TextBlock.tsx
 import React, { useRef, useEffect, useState } from "react";
+import { Volume2, Loader2 } from "lucide-react";
+import { useTTS } from "@/contexts/TTSContext";
+import { generateSpeech, playAudio } from "@/utils/elevenLabsTTS";
+import logger from "@/utils/logger";
 
 interface TextBlockProps {
   id: string;
@@ -24,8 +28,15 @@ const TextBlock: React.FC<TextBlockProps> = ({
 }) => {
   const contentEditableRef = useRef<HTMLDivElement>(null);
   const [localContent, setLocalContent] = useState(content);
+  const [showTTSButton, setShowTTSButton] = useState(false);
+  const [isPlayingTTS, setIsPlayingTTS] = useState(false);
+  const [isLoadingTTS, setIsLoadingTTS] = useState(false);
   const previousContentRef = useRef(content);
   const selectionPositionRef = useRef<{ start: number; end: number } | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Access TTS context
+  const { apiKey, selectedVoice, isTTSEnabled } = useTTS();
 
   // Only update the content from props when the block is not active
   // This prevents cursor jumps while typing
@@ -73,6 +84,16 @@ const TextBlock: React.FC<TextBlockProps> = ({
     }
   }, [isActive, content]);
 
+  // Clean up audio when component unmounts
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
   // Capture the current selection position before handling the input
   const saveSelectionPosition = () => {
     if (contentEditableRef.current) {
@@ -99,23 +120,102 @@ const TextBlock: React.FC<TextBlockProps> = ({
     previousContentRef.current = newContent;
     onChange(newContent);
   };
+  
+  // Handle text-to-speech
+  const handleTTS = async () => {
+    if (!apiKey || !content || isPlayingTTS || isLoadingTTS) return;
+
+    try {
+      setIsLoadingTTS(true);
+      
+      // If there's already audio playing, stop it
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      
+      // Generate speech using ElevenLabs
+      const audioBlob = await generateSpeech({
+        text: content,
+        voiceId: selectedVoice.id,
+        apiKey
+      });
+      
+      // Create audio element
+      const audio = new Audio();
+      audio.src = URL.createObjectURL(audioBlob);
+      
+      // Set up audio events
+      audio.onplay = () => setIsPlayingTTS(true);
+      audio.onended = () => {
+        setIsPlayingTTS(false);
+        URL.revokeObjectURL(audio.src);
+      };
+      audio.onpause = () => setIsPlayingTTS(false);
+      audio.onerror = (e) => {
+        logger.error('audio', 'Error playing TTS audio', e);
+        setIsPlayingTTS(false);
+        setIsLoadingTTS(false);
+      };
+      
+      // Store reference and play
+      audioRef.current = audio;
+      audio.play();
+      
+      setIsLoadingTTS(false);
+    } catch (error) {
+      logger.error('audio', 'Error generating speech', error);
+      setIsLoadingTTS(false);
+    }
+  };
+
+  // Stop TTS playback
+  const stopPlayback = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlayingTTS(false);
+    }
+  };
 
   return (
-    <div
-      id={`block-${id}`}
-      ref={contentEditableRef}
-      contentEditable={!readOnly}
-      suppressContentEditableWarning
-      className={`py-1 px-2 rounded-md transition-colors outline-none ${
-        isActive ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
-      }`}
-      onInput={handleInput}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      onKeyDown={onKeyDown}
-      data-block-type="text"
-      dangerouslySetInnerHTML={{ __html: localContent }}
-    />
+    <div 
+      className="relative group block-container"
+      onMouseEnter={() => setShowTTSButton(true)}
+      onMouseLeave={() => setShowTTSButton(false)}
+    >
+      <div
+        id={`block-${id}`}
+        ref={contentEditableRef}
+        contentEditable={!readOnly}
+        suppressContentEditableWarning
+        className={`py-1 px-2 rounded-md transition-colors outline-none ${
+          isActive ? "bg-blue-900/10 dark:bg-blue-900/20" : "hover:bg-gray-900/5 dark:hover:bg-gray-800/40"
+        } ${isPlayingTTS ? "tts-highlight" : ""}`}
+        onInput={handleInput}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        data-block-type="text"
+        dangerouslySetInnerHTML={{ __html: localContent }}
+      />
+      
+      {/* TTS Button - only show if TTS is enabled, we have an API key, and there's content */}
+      {isTTSEnabled && apiKey && content && showTTSButton && (
+        <button 
+          onClick={isPlayingTTS ? stopPlayback : handleTTS}
+          disabled={isLoadingTTS}
+          className={`block-tts-button ${isPlayingTTS ? "playing" : ""}`}
+          title={isPlayingTTS ? "Stop" : "Read with ElevenLabs"}
+        >
+          {isLoadingTTS ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Volume2 size={14} className={isPlayingTTS ? "text-blue-400" : ""} />
+          )}
+        </button>
+      )}
+    </div>
   );
 };
 

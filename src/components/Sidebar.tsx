@@ -1,4 +1,4 @@
-// components/Sidebar.tsx - Updated with ElevenLabs TTS settings
+// components/Sidebar.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -13,12 +13,12 @@ import {
   Plus, 
   Search, 
   Settings,
-  Headphones,
 } from "lucide-react";
 import logger from "@/utils/logger";
 import { Document } from "@/models/document";
 import { getAllDocuments, createDocument } from "@/services/documentService";
-
+import TTSControls from "@/components/TTSControls";
+import { useTTS } from "@/contexts/TTSContext";
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -34,6 +34,7 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
     "workspace": true
   });
   const pathname = usePathname();
+  const { isTTSEnabled, hasValidKey } = useTTS();
   
   useEffect(() => {
     const loadDocuments = async () => {
@@ -84,10 +85,10 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
 
   if (isCollapsed) {
     return (
-      <div className="w-14 h-screen bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col py-4">
+      <div className="w-14 h-screen bg-gray-900 border-r border-gray-800 flex flex-col py-4">
         <button 
           onClick={onToggle} 
-          className="mb-6 mx-auto text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          className="mb-6 mx-auto text-gray-500 hover:text-gray-300"
         >
           <ChevronRight size={20} />
         </button>
@@ -102,9 +103,10 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
           {/* Collapsed document list would go here */}
         </div>
         <div className="mx-auto mt-auto flex flex-col items-center space-y-3 mb-4">
-          <ElevenLabsSettings />
-          <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-            <Settings size={20} />
+          {/* Show a smaller version of TTSControls when sidebar is collapsed */}
+          <TTSControls position="inline" />
+          <button className="p-2 text-gray-500 hover:text-gray-300">
+            <Settings size={18} />
           </button>
         </div>
       </div>
@@ -112,13 +114,13 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
   }
 
   return (
-    <div className="w-64 h-screen bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+    <div className="w-64 h-screen bg-gray-900 border-r border-gray-800 flex flex-col">
       {/* Sidebar Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-        <h2 className="font-semibold text-lg">Notes</h2>
+      <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+        <h2 className="font-semibold text-lg text-gray-200">Notes</h2>
         <button 
           onClick={onToggle} 
-          className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          className="text-gray-500 hover:text-gray-300"
         >
           <ChevronLeft size={20} />
         </button>
@@ -127,13 +129,13 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
       {/* Search Bar */}
       <div className="p-3">
         <div className="relative">
-          <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-2.5 text-gray-500" />
           <input
             type="text"
             placeholder="Search notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200"
           />
         </div>
       </div>
@@ -152,11 +154,11 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
       {/* Document List */}
       <div className="flex-1 overflow-auto p-2">
         {isLoading ? (
-          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+          <div className="p-4 text-center text-gray-500">
             Loading documents...
           </div>
         ) : filteredDocuments.length === 0 ? (
-          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+          <div className="p-4 text-center text-gray-500">
             {searchQuery ? "No documents match your search" : "No documents yet"}
           </div>
         ) : (
@@ -165,7 +167,7 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
             <div>
               <button 
                 onClick={() => toggleFolder("recent")}
-                className="flex items-center w-full p-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-md"
+                className="flex items-center w-full p-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md"
               >
                 {expandedFolders["recent"] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 <Folder size={16} className="ml-1 mr-2 text-gray-500" />
@@ -180,8 +182,8 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
                       href={`/documents/${doc.id}`}
                       className={`flex items-center w-full p-2 text-sm rounded-md ${
                         pathname === `/documents/${doc.id}`
-                          ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
+                          ? "bg-blue-900/30 text-blue-400"
+                          : "text-gray-300 hover:bg-gray-800"
                       }`}
                     >
                       <File size={14} className="mr-2 text-gray-500" />
@@ -196,7 +198,7 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
             <div>
               <button 
                 onClick={() => toggleFolder("workspace")}
-                className="flex items-center w-full p-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-md"
+                className="flex items-center w-full p-2 text-sm text-gray-300 hover:bg-gray-800 rounded-md"
               >
                 {expandedFolders["workspace"] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 <Folder size={16} className="ml-1 mr-2 text-gray-500" />
@@ -211,8 +213,8 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
                       href={`/documents/${doc.id}`}
                       className={`flex items-center w-full p-2 text-sm rounded-md ${
                         pathname === `/documents/${doc.id}`
-                          ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800"
+                          ? "bg-blue-900/30 text-blue-400"
+                          : "text-gray-300 hover:bg-gray-800"
                       }`}
                     >
                       <File size={14} className="mr-2 text-gray-500" />
@@ -226,15 +228,15 @@ export default function Sidebar({ isCollapsed = false, onToggle }: SidebarProps)
         )}
       </div>
       
-      {/* Sidebar Footer */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
+      {/* Sidebar Footer with TTS Controls */}
+      <div className="p-4 border-t border-gray-800 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <ElevenLabsSettings />
-          <button className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 p-2">
+          <TTSControls position="dropdown" />
+          <button className="text-gray-500 hover:text-gray-300 p-2">
             <Settings size={18} />
           </button>
         </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="text-sm text-gray-500">
           <span>NotesAI</span>
         </div>
       </div>
